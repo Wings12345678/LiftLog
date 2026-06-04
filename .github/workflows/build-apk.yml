@@ -7,6 +7,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      CI: true
+      NODE_OPTIONS: --max_old_space_size=4096
+
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -32,9 +36,16 @@ jobs:
         working-directory: app
         run: npx expo prebuild --platform android --non-interactive
 
+      - name: Set Gradle memory
+        run: |
+          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> app/android/gradle.properties
+          echo "org.gradle.daemon=false" >> app/android/gradle.properties
+          echo "org.gradle.workers.max=2" >> app/android/gradle.properties
+          echo "org.gradle.parallel=false" >> app/android/gradle.properties
+
       - name: Build debug APK
         working-directory: app/android
-        run: ./gradlew assembleDebug
+        run: ./gradlew assembleDebug --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
