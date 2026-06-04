@@ -1,4 +1,4 @@
-name: Build Android APK
+name: Build Android Release APK
 
 on:
   workflow_dispatch:
@@ -43,12 +43,12 @@ jobs:
           echo "org.gradle.workers.max=2" >> app/android/gradle.properties
           echo "org.gradle.parallel=false" >> app/android/gradle.properties
 
-      - name: Build debug APK
+      - name: Build release APK
         working-directory: app/android
-        run: ./gradlew assembleDebug --no-daemon --max-workers=2
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LiftLog-debug-apk
-          path: app/android/app/build/outputs/apk/debug/*.apk
+          name: LiftLog-release-apk
+          path: app/android/app/build/outputs/apk/release/*.apk
