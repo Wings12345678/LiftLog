@@ -28,11 +28,7 @@ jobs:
           distribution: temurin
           java-version: 17
 
-      - name: Install dependencies
-        working-directory: app
-        run: npm install
-
-      - name: Remove Expo dev client for standalone APK
+      - name: Remove Expo dev client config
         working-directory: app
         run: |
           node - <<'NODE'
@@ -42,15 +38,37 @@ jobs:
           const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
 
           appJson.expo.plugins = (appJson.expo.plugins || []).filter((plugin) => {
-            if (plugin === "expo-dev-client") return false;
-            if (Array.isArray(plugin) && plugin[0] === "expo-dev-client") return false;
-            return true;
+            const name = Array.isArray(plugin) ? plugin[0] : plugin;
+            return name !== "expo-dev-client";
           });
 
-          fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
+          fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2) + "\n");
+
+          const packageJsonPath = "package.json";
+          const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
+
+          for (const section of ["dependencies", "devDependencies"]) {
+            if (!pkg[section]) continue;
+
+            delete pkg[section]["expo-dev-client"];
+            delete pkg[section]["expo-dev-launcher"];
+            delete pkg[section]["expo-dev-menu"];
+            delete pkg[section]["expo-dev-menu-interface"];
+          }
+
+          fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n");
           NODE
 
-          npm uninstall expo-dev-client --no-save || true
+      - name: Install dependencies
+        working-directory: app
+        run: npm install
+
+      - name: Check dev client removed
+        working-directory: app
+        run: |
+          npm ls expo-dev-client || true
+          npm ls expo-dev-launcher || true
+          npm ls expo-dev-menu || true
 
       - name: Expo prebuild Android
         working-directory: app
