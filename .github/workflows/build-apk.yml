@@ -32,9 +32,29 @@ jobs:
         working-directory: app
         run: npm install
 
+      - name: Remove Expo dev client for standalone APK
+        working-directory: app
+        run: |
+          node - <<'NODE'
+          const fs = require("fs");
+
+          const appJsonPath = "app.json";
+          const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
+
+          appJson.expo.plugins = (appJson.expo.plugins || []).filter((plugin) => {
+            if (plugin === "expo-dev-client") return false;
+            if (Array.isArray(plugin) && plugin[0] === "expo-dev-client") return false;
+            return true;
+          });
+
+          fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2));
+          NODE
+
+          npm uninstall expo-dev-client --no-save || true
+
       - name: Expo prebuild Android
         working-directory: app
-        run: npx expo prebuild --platform android --non-interactive
+        run: npx expo prebuild --platform android --clean --non-interactive
 
       - name: Set Gradle memory
         run: |
@@ -43,9 +63,23 @@ jobs:
           echo "org.gradle.workers.max=2" >> app/android/gradle.properties
           echo "org.gradle.parallel=false" >> app/android/gradle.properties
 
+      - name: Use debug signing for release
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+
+          p = Path("app/android/app/build.gradle")
+          s = p.read_text()
+
+          if "release {" in s and "signingConfig signingConfigs.debug" not in s:
+              s = s.replace("release {", "release {\n            signingConfig signingConfigs.debug", 1)
+
+          p.write_text(s)
+          PY
+
       - name: Build release APK
         working-directory: app/android
-        run: ./gradlew assembleRelease --no-daemon --max-workers=2
+        run: ./gradlew assembleRelease --no-daemon --max-workers=2 --stacktrace
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
