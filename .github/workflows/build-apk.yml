@@ -1,15 +1,19 @@
-name: Build Android Release APK
+name: Build Android Debug APK
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+      - master
 
 jobs:
-  build:
+  build-android:
     runs-on: ubuntu-latest
 
-    env:
-      CI: true
-      NODE_OPTIONS: --max_old_space_size=4096
+    defaults:
+      run:
+        working-directory: app
 
     steps:
       - name: Checkout
@@ -27,80 +31,43 @@ jobs:
         with:
           distribution: temurin
           java-version: 17
+          cache: gradle
 
-      - name: Remove Expo dev client config
-        working-directory: app
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Check environment
         run: |
-          node - <<'NODE'
-          const fs = require("fs");
+          node -v
+          npm -v
+          java -version
+          pwd
+          ls -la
 
-          const appJsonPath = "app.json";
-          const appJson = JSON.parse(fs.readFileSync(appJsonPath, "utf8"));
-
-          appJson.expo.plugins = (appJson.expo.plugins || []).filter((plugin) => {
-            const name = Array.isArray(plugin) ? plugin[0] : plugin;
-            return name !== "expo-dev-client";
-          });
-
-          fs.writeFileSync(appJsonPath, JSON.stringify(appJson, null, 2) + "\n");
-
-          const packageJsonPath = "package.json";
-          const pkg = JSON.parse(fs.readFileSync(packageJsonPath, "utf8"));
-
-          for (const section of ["dependencies", "devDependencies"]) {
-            if (!pkg[section]) continue;
-
-            delete pkg[section]["expo-dev-client"];
-            delete pkg[section]["expo-dev-launcher"];
-            delete pkg[section]["expo-dev-menu"];
-            delete pkg[section]["expo-dev-menu-interface"];
-          }
-
-          fs.writeFileSync(packageJsonPath, JSON.stringify(pkg, null, 2) + "\n");
-          NODE
-
-      - name: Install dependencies
-        working-directory: app
-        run: npm install
-
-      - name: Check dev client removed
-        working-directory: app
+      - name: Clean install dependencies
         run: |
-          npm ls expo-dev-client || true
-          npm ls expo-dev-launcher || true
-          npm ls expo-dev-menu || true
+          rm -rf node_modules
+          npm ci
 
-      - name: Expo prebuild Android
-        working-directory: app
-        run: npx expo prebuild --platform android --clean --non-interactive
-
-      - name: Set Gradle memory
+      - name: Check Expo autolinking
         run: |
-          echo "org.gradle.jvmargs=-Xmx4096m -XX:MaxMetaspaceSize=1024m -Dfile.encoding=UTF-8" >> app/android/gradle.properties
-          echo "org.gradle.daemon=false" >> app/android/gradle.properties
-          echo "org.gradle.workers.max=2" >> app/android/gradle.properties
-          echo "org.gradle.parallel=false" >> app/android/gradle.properties
+          npx expo-modules-autolinking resolve --platform android
 
-      - name: Use debug signing for release
+      - name: Make Gradle executable
+        run: chmod +x android/gradlew
+
+      - name: Clean Gradle
         run: |
-          python3 - <<'PY'
-          from pathlib import Path
+          cd android
+          ./gradlew clean --stacktrace
 
-          p = Path("app/android/app/build.gradle")
-          s = p.read_text()
-
-          if "release {" in s and "signingConfig signingConfigs.debug" not in s:
-              s = s.replace("release {", "release {\n            signingConfig signingConfigs.debug", 1)
-
-          p.write_text(s)
-          PY
-
-      - name: Build release APK
-        working-directory: app/android
-        run: ./gradlew assembleRelease --no-daemon --max-workers=2 --stacktrace
+      - name: Build Debug APK
+        run: |
+          cd android
+          ./gradlew assembleDebug --stacktrace --info
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: LiftLog-release-apk
-          path: app/android/app/build/outputs/apk/release/*.apk
+          name: app-debug-apk
+          path: app/android/app/build/outputs/apk/debug/*.apk
